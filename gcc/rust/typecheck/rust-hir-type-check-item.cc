@@ -345,14 +345,50 @@ TypeCheckItem::visit (HIR::Enum &enum_decl)
     = parse_repr_options (attrs, enum_decl.get_locus ());
 
   std::vector<TyTy::VariantDef *> variants;
-  int64_t discriminant_value = 0;
+
+  Analysis::NodeMapping increment_value_mapping (
+    enum_decl.get_mappings ().get_crate_num (),
+    enum_decl.get_mappings ().get_nodeid (),
+    mappings.get_next_hir_id (enum_decl.get_mappings ().get_crate_num ()),
+    enum_decl.get_mappings ().get_local_defid ());
+  std::unique_ptr<HIR::Expr> increment_value
+    = std::make_unique<HIR::LiteralExpr> (HIR::LiteralExpr (
+      increment_value_mapping, "1", HIR::Literal::LitType::INT,
+      PrimitiveCoreType::CORETYPE_I64, enum_decl.get_locus (), {}));
+
+  // create the first discriminant value -1
+  std::unique_ptr<HIR::Expr> discriminant_value
+    = std::make_unique<HIR::LiteralExpr> (HIR::LiteralExpr (
+      enum_decl.get_mappings (), "1", HIR::Literal::LitType::INT,
+      PrimitiveCoreType::CORETYPE_I64, enum_decl.get_locus (), {}));
+  (static_cast<HIR::LiteralExpr *> (discriminant_value.get ()))
+    ->set_negative ();
+
   for (auto &variant : enum_decl.get_variants ())
     {
-      TyTy::VariantDef *field_type
-	= TypeCheckEnumItem::Resolve (*variant, discriminant_value);
+      Analysis::NodeMapping mapping (
+	variant->get_mappings ().get_crate_num (),
+	variant->get_mappings ().get_nodeid (),
+	mappings.get_next_hir_id (variant->get_mappings ().get_crate_num ()),
+	variant->get_mappings ().get_local_defid ());
 
-      discriminant_value++;
+      // increment discriminant value
+      discriminant_value.reset (new HIR::ArithmeticOrLogicalExpr (
+	mapping, std::move (discriminant_value), increment_value->clone_expr (),
+	ArithmeticOrLogicalOperator::ADD, variant->get_locus ()));
+
+      TyTy::VariantDef *field_type
+	= TypeCheckEnumItem::Resolve (*variant, std::move (discriminant_value));
       variants.push_back (field_type);
+
+      if (variant->get_enum_item_kind ()
+	  == HIR::EnumItem::EnumItemKind::Discriminant)
+	{
+	  discriminant_value
+	    = static_cast<HIR::EnumItemDiscriminant *> (variant.get ())
+		->get_discriminant_expression ()
+		.clone_expr ();
+	}
     }
 
   // get the path

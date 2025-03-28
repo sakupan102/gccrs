@@ -1584,7 +1584,8 @@ CompileExpr::compile_integer_literal (const HIR::LiteralExpr &expr,
 {
   rust_assert (expr.get_lit_type () == HIR::Literal::INT);
   const auto literal_value = expr.get_literal ();
-
+  rust_debug ("hello");
+  rust_debug (expr.as_string ().c_str ());
   tree type = TyTyResolveCompile::compile (ctx, tyty);
 
   mpz_t ival;
